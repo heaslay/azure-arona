@@ -715,15 +715,21 @@ async def on_ready():
         DEV_GUILD_ID = int(os.getenv("DEV_GUILD_ID", "0"))
         if DEV_GUILD_ID:
             guild = discord.Object(id=DEV_GUILD_ID)
-            tree.copy_global_to(guild=guild)
+            #tree.copy_global_to(guild=guild)
             await tree.sync(guild=guild)
-            print(f"⚡ Commands synced instantly to dev guild {DEV_GUILD_ID}")
+            print(f"⚡ Commands synced instantly to dev guild {DEV_GUILD_ID}", flush=True)
 
-        # Always also sync globally
         await tree.sync()
-        print("Slash commands synced globally.")
+        print("Slash commands synced globally.", flush=True)
     except Exception as e:
-        print("❌ Sync failed:", e)
+        print(f"❌ Sync failed: {e}", flush=True)
+
+    if not daily_check.is_running():
+        daily_check.start()
+        print("🕒 daily_check started", flush=True)
+
+    if not gacha_notice_check.is_running():
+        gacha_notice_check.start()
+        print("📢 gacha_notice_check started", flush=True)
 
 client.run(DISCORD_TOKEN)
-#test teehe
