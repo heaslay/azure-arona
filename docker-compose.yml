@@ -1,0 +1,11 @@
+services:
+  azure-arona:
+    build: .
+    container_name: azure-arona
+    restart: unless-stopped
+    working_dir: /projects/azure-arona/app
+    volumes:
+      - /your/path/to/azure-arona:/projects/azure-arona
+    environment:
+      - TZ=Your/Timezone
+    command: watchmedo auto-restart --patterns="*.py" --recursive --directory=/projects/azure-arona/app -- python bot.py
