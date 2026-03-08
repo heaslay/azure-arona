@@ -1,0 +1,21 @@
+# Environment
+.env
+
+# Database
+state.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+app/.venv/
+
+# Data
+# data/students.min.en.json
+
+# Webhook
+webhook/
+
+# Misc
+*.tar.gz
+*.log
