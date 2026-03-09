@@ -12,8 +12,7 @@ from pathlib import Path
 
 import db as dbmod
 import scraper
-from formatters import render_skill_line, render_skill_with_upgrade, render_skill_desc_only, render_skill_header
-
+from formatters import render_skill_line, render_skill_with_upgrade, render_skill_desc_only, render_skill_header, _fmt_skill_table, _fmt_cost
 from pathlib import Path
 import json
 from dotenv import load_dotenv
@@ -219,17 +218,15 @@ async def testlatest_cmd(interaction: discord.Interaction):
     await channel.send(content=msg, files=discord_files if discord_files else None)
 
     await interaction.followup.send("✅ Posted test message.", ephemeral=True)  # 👈 followup
-    
-@tree.command(name="ex", description="Show a student's EX skill.")
+
+@tree.command(name="ex", description="Show a student's EX skill with stats per rank.")
 @app_commands.describe(student="Student name, e.g., Yuuka")
 @app_commands.autocomplete(student=student_autocomplete)
 async def ex_cmd(interaction: discord.Interaction, student: str):
-    # Acknowledge within 3 seconds so the interaction never expires
     await interaction.response.defer(thinking=True)
 
     try:
         key = (student or "").strip().lower()
-
         s = STUDENTS_BY_PATH.get(key) or STUDENTS_BY_NAME.get(key)
         if not s:
             return await interaction.followup.send("Student not found.", ephemeral=True)
@@ -238,19 +235,23 @@ async def ex_cmd(interaction: discord.Interaction, student: str):
         ex = skills.get("Ex")
         if not ex:
             return await interaction.followup.send(
-                f"No EX skill found for {s.get('Name','that student')}.",
+                f"No EX skill found for {s.get('Name', 'that student')}.",
                 ephemeral=True
             )
 
-        msg = render_skill_line(s.get("Name", "Unknown"), "EX", ex)
-        await interaction.followup.send(msg)
+        name = s.get("Name", "Unknown")
+        skill_name = ex.get("Name", "Unknown")
+        body = _fmt_skill_table(ex, ranks=5)
+        cost_txt = _fmt_cost(ex, ranks=5)
+        msg = f"**{name}'s EX Skill — {skill_name}{cost_txt}**\n{body}"
+        await interaction.followup.send(_trunc(msg, 2000))
 
     except Exception as e:
-        # If anything goes wrong, still respond (and keep traceback in logs)
         await interaction.followup.send(f"❌ Error: `{type(e).__name__}: {e}`", ephemeral=True)
         raise
 
-@tree.command(name="ns", description="Show a student's Normal Skill (and Unique Item T2 upgrade if available).")
+
+@tree.command(name="ns", description="Show a student's Normal Skill with stats per rank.")
 @app_commands.describe(student="Student name, e.g., Yuuka")
 @app_commands.autocomplete(student=student_autocomplete)
 async def ns_cmd(interaction: discord.Interaction, student: str):
@@ -263,29 +264,32 @@ async def ns_cmd(interaction: discord.Interaction, student: str):
             return await interaction.followup.send("Student not found.", ephemeral=True)
 
         skills = s.get("Skills") or {}
-        base = skills.get("Public")  # Normal/Basic
+        base = skills.get("Public")
         if not base:
             return await interaction.followup.send(
-                f"No Normal Skill found for {s.get('Name','that student')}.",
+                f"No Normal Skill found for {s.get('Name', 'that student')}.",
                 ephemeral=True
             )
 
-        upgrade = skills.get("GearPublic")  # Unique Item T2 upgrade (Normal+), if implemented
+        name = s.get("Name", "Unknown")
+        skill_name = base.get("Name", "Unknown")
+        body = _fmt_skill_table(base, ranks=10)
 
-        msg = render_skill_with_upgrade(
-            s.get("Name", "Unknown"),
-            "Normal",
-            base,
-            upgrade_skill=upgrade,
-            upgrade_prefix="Unique Item T2",
-        )
-        await interaction.followup.send(msg)
+        upgrade = skills.get("GearPublic")
+        upgrade_txt = ""
+        if upgrade:
+            upgrade_body = _fmt_skill_table(upgrade, ranks=10)
+            upgrade_txt = f"\n\n**Upgrade (Unique Item T2) — {upgrade.get('Name', 'Upgrade')}**\n{upgrade_body}"
+
+        msg = f"**{name}'s Normal Skill — {skill_name}**\n{body}{upgrade_txt}"
+        await interaction.followup.send(_trunc(msg, 2000))
 
     except Exception as e:
         await interaction.followup.send(f"❌ Error: `{type(e).__name__}: {e}`", ephemeral=True)
         raise
 
-@tree.command(name="enhanced", description="Show a student's Enhanced Skill (and UE40 upgrade if available).")
+
+@tree.command(name="enhanced", description="Show a student's Enhanced Skill with stats per rank.")
 @app_commands.describe(student="Student name, e.g., Yuuka")
 @app_commands.autocomplete(student=student_autocomplete)
 async def enhanced_cmd(interaction: discord.Interaction, student: str):
@@ -301,26 +305,29 @@ async def enhanced_cmd(interaction: discord.Interaction, student: str):
         base = skills.get("Passive")
         if not base:
             return await interaction.followup.send(
-                f"No Enhanced Skill found for {s.get('Name','that student')}.",
+                f"No Enhanced Skill found for {s.get('Name', 'that student')}.",
                 ephemeral=True
             )
 
-        upgrade = skills.get("WeaponPassive")  # UE40 upgrade (Enhanced+)
+        name = s.get("Name", "Unknown")
+        skill_name = base.get("Name", "Unknown")
+        body = _fmt_skill_table(base, ranks=10)
 
-        msg = render_skill_with_upgrade(
-            s.get("Name", "Unknown"),
-            "Enhanced",
-            base,
-            upgrade_skill=upgrade,
-            upgrade_prefix="UE40",
-        )
-        await interaction.followup.send(msg)
+        upgrade = skills.get("WeaponPassive")
+        upgrade_txt = ""
+        if upgrade:
+            upgrade_body = _fmt_skill_table(upgrade, ranks=10)
+            upgrade_txt = f"\n\n**Upgrade (UE40) — {upgrade.get('Name', 'Upgrade')}**\n{upgrade_body}"
+
+        msg = f"**{name}'s Enhanced Skill — {skill_name}**\n{body}{upgrade_txt}"
+        await interaction.followup.send(_trunc(msg, 2000))
 
     except Exception as e:
         await interaction.followup.send(f"❌ Error: `{type(e).__name__}: {e}`", ephemeral=True)
         raise
 
-@tree.command(name="sub", description="Show a student's Sub Skill.")
+
+@tree.command(name="sub", description="Show a student's Sub Skill with stats per rank.")
 @app_commands.describe(student="Student name, e.g., Yuuka")
 @app_commands.autocomplete(student=student_autocomplete)
 async def sub_cmd(interaction: discord.Interaction, student: str):
@@ -336,12 +343,16 @@ async def sub_cmd(interaction: discord.Interaction, student: str):
         sk = skills.get("Sub") or skills.get("ExtraPassive")
         if not sk:
             return await interaction.followup.send(
-                f"No Sub Skill found for {s.get('Name','that student')}.",
+                f"No Sub Skill found for {s.get('Name', 'that student')}.",
                 ephemeral=True
             )
 
-        msg = render_skill_line(s.get("Name", "Unknown"), "Sub", sk)
-        await interaction.followup.send(msg)
+        name = s.get("Name", "Unknown")
+        skill_name = sk.get("Name", "Unknown")
+        body = _fmt_skill_table(sk, ranks=10)
+        msg = f"**{name}'s Sub Skill — {skill_name}**\n{body}"
+        await interaction.followup.send(_trunc(msg, 2000))
+
     except Exception as e:
         await interaction.followup.send(f"❌ Error: `{type(e).__name__}: {e}`", ephemeral=True)
         raise

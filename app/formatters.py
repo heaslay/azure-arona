@@ -100,3 +100,31 @@ def render_skill_header(skill_label: str, skill: dict) -> str:
     if isinstance(cost, list) and cost:
         cost_txt = f" (Cost: {cost[0]})"
     return f"{skill_label} - {name}{cost_txt}"
+
+def _fmt_skill_table(skill: dict, ranks: int) -> str:
+    params = skill.get("Parameters") or []
+    desc = skill.get("Desc", "") or ""
+
+    param_ranges = []
+    for p in params:
+        param_ranges.append(p if isinstance(p, list) else [p] * ranks)
+
+    def repl(m: re.Match) -> str:
+        idx = int(m.group(1)) - 1
+        if 0 <= idx < len(param_ranges):
+            values = param_ranges[idx][:ranks]
+            return f"({'/'.join(str(v) for v in values)})"
+        return m.group(0)
+
+    desc_out = _PARAM_RE.sub(repl, desc)
+    desc_out = _strip_schale_markup(desc_out).strip()
+    return desc_out
+
+def _fmt_cost(skill: dict, ranks: int) -> str:
+    cost = skill.get("Cost")
+    if not isinstance(cost, list) or not cost:
+        return ""
+    cost_slice = cost[:ranks]
+    if len(set(cost_slice)) == 1:
+        return f" (Cost: {cost_slice[0]})"
+    return f" (Cost: {'/'.join(str(c) for c in cost_slice)})"
