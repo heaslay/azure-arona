@@ -1,15 +1,23 @@
 import re
 
-_B_TAG_RE = re.compile(r"<b:([^>]+)>")          # <b:Shield> -> Shield
-_PARAM_RE = re.compile(r"<\?(\d+)>")            # <?1> -> param 1
+_B_TAG_RE = re.compile(r"<b:([^>]+)>")
+_C_TAG_RE = re.compile(r"<c:([^>]+)>")
+_D_TAG_RE = re.compile(r"<d:([^>]+)>")
+_PARAM_RE = re.compile(r"<\?(\d+)>")
 
 def _strip_schale_markup(s: str) -> str:
     if not s:
         return ""
-    s = _B_TAG_RE.sub(r"\1", s)                 # drop <b:...> tags
+    s = _B_TAG_RE.sub(r"\1", s)                         # <b:ATK> -> ATK
+    s = _C_TAG_RE.sub(r"\1", s)                         # <c:Fear> -> Fear
+    s = _D_TAG_RE.sub(r"\1", s)                         # <d:Poison> -> Poison
     s = s.replace("<br>", "\n").replace("<br/>", "\n").replace("<br />", "\n")
-    # remove any remaining HTML-ish tags conservatively
-    s = re.sub(r"</?[^>]+>", "", s)
+    s = re.sub(r"<b>\s*([^<]*?)\s*</b>", r"\1", s)      # <b>200</b> -> 200
+    s = re.sub(r"</b>", "", s)                           # stray </b>
+    s = re.sub(r"<b class='[^']*'>", "", s)              # <b class='ba-col-*'> -> strip
+    s = re.sub(r"<kb:[^>]+>", "", s)                     # <kb:1> -> strip
+    s = re.sub(r"<s:[^>]+>", "", s)                      # <s:...> -> strip
+    s = re.sub(r"</?[^>]+>", "", s)                      # anything remaining
     return s
 
 def _range_text(values: list[str]) -> str:

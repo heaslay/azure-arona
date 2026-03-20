@@ -433,25 +433,38 @@ async def student_cmd(interaction: discord.Interaction, student: str):
 async def post_to_all_servers(tweet_id: str, message: str, files: list[tuple[str, bytes]]):
     targets = dbmod.list_enabled_channels(conn)
 
-    discord_files = []
-    for fname, blob in files:
-        discord_files.append(discord.File(fp=io.BytesIO(blob), filename=fname))
-
     for guild_id, channel_id in targets:
         channel = client.get_channel(channel_id)
         if channel is None:
-            # Channel not cached; try fetching
             try:
                 channel = await client.fetch_channel(channel_id)
-            except Exception:
+            except discord.NotFound:
+                # Channel no longer exists
+                dbmod.set_enabled(conn, guild_id, 0)
+                await dm_dev(f"⚠️ Disabled guild `{guild_id}` — channel `{channel_id}` not found.")
+                continue
+            except Exception as e:
+                await dm_dev(f"⚠️ Could not fetch channel `{channel_id}` in guild `{guild_id}`: {e}")
                 continue
 
         try:
+            discord_files = [
+                discord.File(fp=io.BytesIO(blob), filename=fname)
+                for fname, blob in files
+            ]
             await channel.send(content=message, files=discord_files if discord_files else None)
-            await asyncio.sleep(1)  # polite spacing across servers
-        except Exception:
-            # If it fails due to perms or deleted channel, you might disable automatically later
-            pass
+            await asyncio.sleep(1)
+        except discord.Forbidden:
+            # Bot lost permissions
+            dbmod.set_enabled(conn, guild_id, 0)
+            await dm_dev(f"⚠️ Disabled guild `{guild_id}` — missing permissions in channel `{channel_id}`.")
+        except discord.NotFound:
+            # Channel deleted between fetch and send
+            dbmod.set_enabled(conn, guild_id, 0)
+            await dm_dev(f"⚠️ Disabled guild `{guild_id}` — channel `{channel_id}` was deleted.")
+        except Exception as e:
+            # Unexpected error — don't disable, just notify
+            await dm_dev(f"⚠️ Failed to post in guild `{guild_id}`, channel `{channel_id}`: {type(e).__name__}: {e}")
 
 async def dm_dev(message: str):
     if not DM_DAILY_STATUS:
@@ -717,6 +730,58 @@ async def testgachapreview_cmd(interaction: discord.Interaction):
         await interaction.followup.send(f"❌ Error: `{type(e).__name__}: {e}`", ephemeral=True)
         raise
 
+@tasks.loop(time=dtime(hour=3, minute=0, tzinfo=timezone.utc))
+async def update_student_data():
+    from datetime import datetime, timezone as tz
+    if datetime.now(tz.utc).weekday() != 0:  # 0 = Monday
+        return
+
+    try:
+        import urllib.request
+        url = "https://schaledb.com/data/en/students.min.json"
+        dest = DATA_PATH
+
+        await asyncio.to_thread(urllib.request.urlretrieve, url, dest)
+
+        # Reload the data into memory
+        global STUDENTS, STUDENTS_BY_PATH, STUDENTS_BY_NAME, STUDENT_AC_POOL
+
+        with open(dest, encoding="utf-8") as f:
+            raw = json.load(f)
+
+        if isinstance(raw, dict):
+            STUDENTS = list(raw.values())
+        elif isinstance(raw, list):
+            STUDENTS = raw
+
+        STUDENTS_BY_PATH = {
+            s.get("PathName", "").lower(): s
+            for s in STUDENTS
+            if isinstance(s, dict) and s.get("PathName")
+        }
+        STUDENTS_BY_NAME = {
+            s.get("Name", "").lower(): s
+            for s in STUDENTS
+            if isinstance(s, dict) and s.get("Name")
+        }
+        STUDENT_AC_POOL = []
+        for s in STUDENTS:
+            if not isinstance(s, dict):
+                continue
+            name = (s.get("Name") or "").strip()
+            pathname = (s.get("PathName") or "").strip().lower()
+            if not name or not pathname:
+                continue
+            STUDENT_AC_POOL.append((name, pathname))
+        STUDENT_AC_POOL.sort(key=lambda x: x[0].lower())
+
+        print(f"[students] Reloaded {len(STUDENTS_BY_PATH)} students.", flush=True)
+        await dm_dev(f"✅ Student data updated from SchaleDB. {len(STUDENTS_BY_PATH)} students loaded.")
+
+    except Exception as e:
+        await dm_dev(f"❌ Student data update FAILED: `{type(e).__name__}: {e}`")
+        raise
+
 @client.event
 async def on_ready():
     print("🔥 on_ready triggered", flush=True)
@@ -743,4 +808,10 @@ async def on_ready():
         gacha_notice_check.start()
         print("📢 gacha_notice_check started", flush=True)
 
+    if not update_student_data.is_running():
+        update_student_data.start()
+        print("📚 update_student_data started", flush=True)
+
 client.run(DISCORD_TOKEN)
+
+#restart 
